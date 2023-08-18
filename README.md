@@ -1,2 +1,2 @@
 # MUDUniswapV3Staker
-Uniswap v3 liquidity staker contract of MUD
+MUD Uniswap v3 liquidity staking contract
