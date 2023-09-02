@@ -7,6 +7,8 @@ import "./uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
 import "./uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "./uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "./uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
+import "./uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
+import "./uniswap/v3-core/contracts/libraries/TickMath.sol";
 
 interface IERC20 {
     /**
@@ -58,6 +60,20 @@ interface IERC20 {
     function burn(uint256 amount) external;
 }
 
+library SafeMath {
+
+  /**
+  * @dev Multiplies two numbers, throws on overflow.
+  */
+  function mul(uint256 a, uint256 b) internal pure returns (uint256 c) {
+    if (a == 0) {
+      return 0;
+    }
+    c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+}
 
 /// @title Uniswap V3 canonical staking interface
 contract MUDUniswapV3Staker is IERC721Receiver {
@@ -101,8 +117,9 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     event mudLPPrematureUnstaked(address owner, uint256 tokenId, uint256 usdtToDAOFund, uint256 mudBurnt);
     event mudLPPrematureUnstakIgnored(address owner, uint256 tokenId);
     event mudLPAddressUnstaked(address addr);
-    event mudLPTransferredUSDTToDAOFund(address daoFundAddress, uint256 usdtBalance);
-    event mudLPBurntMUDOfPrematureContracts(uint256 mudBalance);
+
+
+
 
     constructor() {        
         admin = address(msg.sender);
@@ -115,11 +132,13 @@ contract MUDUniswapV3Staker is IERC721Receiver {
             IUniswapV3Pool pool,
             address token0,
             address token1,
+            int24 lowerTick,
+            int24 upperTick,
             uint128 liquidity
         )
     {
         uint24 fee;
-        (, , token0, token1, fee, , , liquidity, , , , ) = nonfungiblePositionManager.positions(
+        (, , token0, token1, fee, lowerTick, upperTick, liquidity, , , , ) = nonfungiblePositionManager.positions(
             tokenId
         );
 
@@ -138,8 +157,9 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     // Parameters:
     //   usdtToStake: USDT to be staked
     //   mudToStake: MUD to be staked
-    //   duration: stake period (3/6/9 months, each month 30 days)
+    //   duration: stake period (3/6/12 months, each month 30 days)
     //   nodeId: DAPP to use, must return in events
+    //   slippageFactor: range from 850 to 999 that is slippage 0.001% to 15%
     // Returns:
     //   tokenId: UNISWAP V3 liquidity NFT position id
     //   liquidity: uniswap v3 liquidity created
@@ -147,7 +167,7 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     //   amount1: MUD staked
     //   startTime: staking start time
     //   endTime: staking end time
-    function createNewStakingContract(uint256 usdtToStake, uint256 mudToStake, uint8 duration, uint nodeId)
+    function createNewStakingContract(uint256 usdtToStake, uint256 mudToStake, uint8 duration, uint nodeId, uint256 slippageFactor)
         external
         returns (
             uint256 tokenId,
@@ -158,14 +178,17 @@ contract MUDUniswapV3Staker is IERC721Receiver {
             uint endTime
         )
     {
-        require(duration == 3 || duration == 6 || duration == 12, "Duration should be 3/6/9 !");
-
+        require(nodeId > 0 && nodeId <= 500000, "nodeId should between 1-500000 !");
+        require(slippageFactor >= 850 && slippageFactor <= 999, "slippageFactor should between 850 to 999 !");
+        require(duration == 3 || duration == 6 || duration == 12, "Duration should be 3/6/12 !");
+        require(usdtToStake > 0, "USDT amount should > 0 !");
+        require(mudToStake > 0, "MUD amount should > 0");
         uint256 amount0ToMint = usdtToStake;
         uint256 amount1ToMint = mudToStake;
 
         // transfer tokens to contract
-        usdt.transferFrom(msg.sender, address(this), amount0ToMint);
-        mud.transferFrom(msg.sender, address(this), amount1ToMint);
+        require(usdt.transferFrom(msg.sender, address(this), amount0ToMint) == true, "USDT transferFrom() failed!");
+        require(mud.transferFrom(msg.sender, address(this), amount1ToMint) == true, "MUD transferFrom() failed!");
 
         // Approve the position manager
         usdt.approve(address(nonfungiblePositionManager), amount0ToMint);
@@ -180,8 +203,8 @@ contract MUDUniswapV3Staker is IERC721Receiver {
                 tickUpper: 887220,//this will be modified to the actual token pair MUD/USDT of polygon mainnet
                 amount0Desired: amount0ToMint,
                 amount1Desired: amount1ToMint,
-                amount0Min: 0,
-                amount1Min: 0,
+                amount0Min: SafeMath.mul(amount0ToMint, slippageFactor) / 1000, // slippage protection
+                amount1Min: SafeMath.mul(amount1ToMint, slippageFactor) / 1000, // slippage protection
                 recipient: address(this),
                 deadline: block.timestamp
             });
@@ -211,13 +234,13 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         if (amount0 < amount0ToMint) {
             usdt.approve(address(nonfungiblePositionManager), 0);
             uint256 refund0 = amount0ToMint - amount0;
-            usdt.transfer(msg.sender, refund0);
+            require(usdt.transfer(msg.sender, refund0) == true, "USDT transfer failed !");
         }
 
         if (amount1 < amount1ToMint) {
             mud.approve(address(nonfungiblePositionManager), 0);
             uint256 refund1 = amount1ToMint - amount1;
-            mud.transfer(msg.sender, refund1);
+            require(mud.transfer(msg.sender, refund1) == true, "MUD transfer failed !");
         }
         
         uint nodeIdOut = nodeId;//to pass the compiling , otherwise compiler will have stack too deep error.
@@ -244,9 +267,11 @@ contract MUDUniswapV3Staker is IERC721Receiver {
                 contractInfoArray[i] = contractInfoArray[contractInfoArray.length - 1];                
                 contractInfoArray.pop(); //remove last element                     
                 
-                (usdtReleased, mudReleased) = releaseLiquidity(tokenId);
-
+                address ownerAddress = tokenOwner[tokenId];
                 delete tokenOwner[tokenId];
+
+                (usdtReleased, mudReleased) = releaseLiquidity(tokenId, ownerAddress);    
+                nonfungiblePositionManager.burn(tokenId);            
                 emit mudLPUnstaked(msg.sender, tokenId, usdtReleased, mudReleased);
                 break;
             }
@@ -282,22 +307,25 @@ contract MUDUniswapV3Staker is IERC721Receiver {
                     //the owner should call unstake() function after 24 hours to unstake it
                     contractInfoArray[i].endTime = block.timestamp + secPerDay;                                      
 
-                    //take off 20% of the liquidity            
-                    (, , , uint128 liquidity) = getPositionInfo(tokenId);  
+                    //take off 20% of the liquidity              
+                    (IUniswapV3Pool pool, , , int24 lowerTick, int24 upperTick, uint128 liquidity) = getPositionInfo(tokenId);
+                    
                     uint128 liquidityOff = liquidity / 5;
+                    //slippage protection calculations
+                    (amount0, amount1) = calculateLiquidityAmount(pool, lowerTick, upperTick, liquidityOff);
                     INonfungiblePositionManager.DecreaseLiquidityParams
                         memory params = INonfungiblePositionManager.DecreaseLiquidityParams({
                             tokenId: tokenId,
                             liquidity: liquidityOff,
-                            amount0Min: 0,
-                            amount1Min: 0,
+                            amount0Min: amount0,//slippage protection
+                            amount1Min: amount1,//slippage protection
                             deadline: block.timestamp
                         });
 
                     (amount0, amount1) = nonfungiblePositionManager.decreaseLiquidity(params);   
                     (uint256 amount0collected, uint256 amount1collected) = collectAllFees(tokenId);
                  
-                    usdt.transfer(daoFundAddress, amount0collected);//transfer the 20% usdt to DAO fund account
+                    require(usdt.transfer(daoFundAddress, amount0collected) == true, "USDT transfer failed !");//transfer the 20% usdt to DAO fund account
                     mud.burn(amount1collected); //burn 20% MUD as penalty                  
 
                     emit mudLPPrematureUnstaked(msg.sender, tokenId, amount0collected, amount1collected);
@@ -329,18 +357,21 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     // release the 100% liquidity of the contract and return the assets to the owner address
     // Parameters: 
     //  tokenId:   UNISWAP V3 liquidity NFT position id (used as staking contract id)
+    //  ownerAddress: the liquidity provider's address
     // Returns: 
     //  amount0collected: USDT returned to the owner address
     //  amount1collected: MUD returned to the owner address
-    function releaseLiquidity(uint256 tokenId) private returns (uint256 amount0collected, uint256 amount1collected) {
-        (, , , uint128 liquidity) = getPositionInfo(tokenId);  
+    function releaseLiquidity(uint256 tokenId, address ownerAddress) private returns (uint256 amount0collected, uint256 amount1collected) {
+        //calculat th amount0 and amount1 for slippage protection
+        (IUniswapV3Pool pool, , , int24 lowerTick, int24 upperTick, uint128 liquidity) = getPositionInfo(tokenId);  
+        (uint256 amount0, uint256 amount1) = calculateLiquidityAmount(pool, lowerTick, upperTick, liquidity);
         
         INonfungiblePositionManager.DecreaseLiquidityParams
             memory params = INonfungiblePositionManager.DecreaseLiquidityParams({
                 tokenId: tokenId,
                 liquidity: liquidity,
-                amount0Min: 0,
-                amount1Min: 0,
+                amount0Min: amount0,//slippage protection
+                amount1Min: amount1,//slippage protection
                 deadline: block.timestamp
             });
 
@@ -348,11 +379,11 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         (amount0collected, amount1collected) = collectAllFees(tokenId);
 
         //return tokens to the owner
-        usdt.transfer(tokenOwner[tokenId], amount0collected);
-        mud.transfer(tokenOwner[tokenId], amount1collected);
+        require(usdt.transfer(ownerAddress, amount0collected) == true, "USDT transfer failed !");
+        require(mud.transfer(ownerAddress, amount1collected) == true, "MUD transfer failed !");
     }
 
-    //unstake all tokenId of the address for mainnet mapping purpose, ignore the contract expiry time
+    //unstake the last staking tokenId of the address for mainnet mapping purpose, ignore the contract expiry time
     //Parameter:
     //  addr: liquidity owner address to be unstaked
     function unstakeForMainnetMapping(address addr) public {
@@ -361,17 +392,20 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         StakingContractInfo[] storage contractInfoArray = stakingContractInfoMap[addr];
         require(contractInfoArray.length > 0, "Addr is not found !");
 
-        for (uint i=0; i < contractInfoArray.length; i++) {
-            uint256 tokenId = contractInfoArray[i].tokenId;
-            require(tokenOwner[tokenId] == addr, "The addr is not the owner of the token !");
-                       
-            (uint256 usdtReleased, uint256 mudReleased) = releaseLiquidity(tokenId);    
+        uint256 tokenId = contractInfoArray[contractInfoArray.length - 1].tokenId;                
+        require(tokenOwner[tokenId] == addr, "The addr is not the owner of the token !");
+        contractInfoArray.pop(); //remove the last staking contract 
+        address ownerAddress = tokenOwner[tokenId];
+        delete tokenOwner[tokenId]; //delete the nft position from owner map
+        
+        if (contractInfoArray.length == 0) {
+            delete stakingContractInfoMap[addr];//delete the address from map
+            emit mudLPAddressUnstaked(addr);
+        }       
 
-            delete tokenOwner[tokenId]; //delete the nft position from owner map
-            emit mudLPUnstaked(addr, tokenId, usdtReleased, mudReleased);                           
-        }
-        delete stakingContractInfoMap[addr];//delete the address from map
-        emit mudLPAddressUnstaked(addr);
+        (uint256 usdtReleased, uint256 mudReleased) = releaseLiquidity(tokenId, ownerAddress);  
+        nonfungiblePositionManager.burn(tokenId);      
+        emit mudLPUnstaked(addr, tokenId, usdtReleased, mudReleased); 
     }
 
     // Get total number of staking contracts of the given address
@@ -445,7 +479,7 @@ contract MUDUniswapV3Staker is IERC721Receiver {
             addressToCheck = msg.sender;
         }        
 
-        StakingContractInfo[] storage contractInfoArray = stakingContractInfoMap[addressToCheck];
+        StakingContractInfo[] memory contractInfoArray = stakingContractInfoMap[addressToCheck];
         require(contractInfoArray.length > 0, "msg.sender is not found !");
 
         for (uint i=0; i < contractInfoArray.length; i++) {
@@ -466,7 +500,20 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         address from,
         uint256 tokenId,
         bytes calldata data
-    ) external override returns (bytes4) {      
+    ) external pure override returns (bytes4) {      
         return this.onERC721Received.selector;
     } 
+
+    ///This function calculate the amount of tokens according from the liqudity amount
+    function calculateLiquidityAmount(IUniswapV3Pool pool, int24 lowerTick, int24 upperTick, uint128 liqudityToRelease) private view returns (uint256 amount0, uint256 amount1) {
+        (uint160 sqrtRatioX96, , , , , , ) = pool.slot0();
+        (amount0, amount1) = LiquidityAmounts
+            .getAmountsForLiquidity(
+                sqrtRatioX96,
+                TickMath.getSqrtRatioAtTick(lowerTick),
+                TickMath.getSqrtRatioAtTick(upperTick),
+                liqudityToRelease
+            );
+    }
+
 }
