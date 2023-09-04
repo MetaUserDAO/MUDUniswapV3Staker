@@ -519,7 +519,10 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     // This function returns the amount of tokens of the current liquidity
     // Parameters:
     //   tokenId: NFT position of the staked liquidity
-    //   addressToCheck: 
+    //   addressToCheck: owner address of the NFT
+    // Returns:
+    //   amount0: USDT amount of the liquidity
+    //   amount1: MUD amount of the liquidity 
     function getLiquidityAmountByTokenId(uint256 tokenId, address addressToCheck) external view returns (uint256 amount0, uint256 amount1) {       
         if (msg.sender == admin) {
             require(tokenOwner[tokenId] == addressToCheck, "The staked nft does not belong to the addressToCheck !");            
