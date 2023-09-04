@@ -516,4 +516,18 @@ contract MUDUniswapV3Staker is IERC721Receiver {
             );
     }
 
+    // This function returns the amount of tokens of the current liquidity
+    // Parameters:
+    //   tokenId: NFT position of the staked liquidity
+    //   addressToCheck: 
+    function getLiquidityAmountByTokenId(uint256 tokenId, address addressToCheck) external view returns (uint256 amount0, uint256 amount1) {       
+        if (msg.sender == admin) {
+            require(tokenOwner[tokenId] == addressToCheck, "The staked nft does not belong to the addressToCheck !");            
+        } else {
+            require(tokenOwner[tokenId] == msg.sender, "User must be the owner of the staked nft");            
+        }        
+        (IUniswapV3Pool pool, , , int24 lowerTick, int24 upperTick, uint128 liquidity) = getPositionInfo(tokenId);
+
+        return calculateLiquidityAmount(pool, lowerTick, upperTick, liquidity);            
+    }
 }
