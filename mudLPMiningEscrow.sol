@@ -78,8 +78,8 @@ library SafeMath {
 /// @title Uniswap V3 canonical staking interface
 contract MUDUniswapV3Staker is IERC721Receiver {
 
-    uint constant secPerMonth = 60;//2592000;
-    uint constant secPerDay = 60;//86400;
+    uint constant secPerMonth = 2592000;
+    uint constant secPerDay = 86400;
     //This is the DAO fund address that will be appointed by DAO, the fund from the penalties will be used as R&D fund or 
     //bounty rewards which will be voted by the community members
     address constant  daoFundAddress = address(0x2cD63d1C39373d1Af4F68e57991924F5DAC1a8B6);
