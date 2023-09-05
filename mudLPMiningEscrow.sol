@@ -85,15 +85,15 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     address constant  daoFundAddress = address(0x2cD63d1C39373d1Af4F68e57991924F5DAC1a8B6);
     address immutable admin;    
     //Uniswap liqudity pool address for MUDmud/USDTmud token pair, the pool address will be changed to MUD/USDT uniswap v3 token pair of matic mainnet
-    IUniswapV3Pool constant lpPool = IUniswapV3Pool(address(0x5f852454ec0D844E4AE0565eEB127cb37aC2A13b)); 
+    IUniswapV3Pool constant lpPool = IUniswapV3Pool(address(0x5338968F9646e4A865D76e07C2A6E340Dd3aC462)); 
     //official NonfungiblePositionManager contract address of Uniswap v3
     INonfungiblePositionManager constant nonfungiblePositionManager = INonfungiblePositionManager(address(0xC36442b4a4522E871399CD717aBDD847Ab11FE88));
     //official UniswapV3Factory contract address
     IUniswapV3Factory constant factory = IUniswapV3Factory(address(0x1F98431c8aD98523631AE4a59f267346ea31F984));
-    //USDTmud test token address, will be changed to official USDT token address of polygon mainnet
-    address constant usdtAddr = address(0x1ef964b77efA568adf820f220e5Af672254F6531);
-    //MUDmud test token address, will be changed to official MUD token address of polygon mainnet
-    address constant mudAddr = address(0x8fC6442d4067fC459aA546d23160d22151D9201a);
+    //The official USDT token address of polygon mainnet
+    address constant usdtAddr = address(0xc2132D05D31c914a87C6611C10748AEb04B58e8F);
+    //The official MUD token address of polygon mainnet
+    address constant mudAddr = address(0xf6EaC236757e82D6772E8bD02D36a0c791d78C51);
     IERC20 constant usdt = IERC20(usdtAddr);
     IERC20 constant mud = IERC20(mudAddr);
 
@@ -199,8 +199,8 @@ contract MUDUniswapV3Staker is IERC721Receiver {
                 token0: usdtAddr,
                 token1: mudAddr,
                 fee: 3000,
-                tickLower: -887220,//this will be modified to the actual token pair MUD/USDT of polygon mainnet
-                tickUpper: 887220,//this will be modified to the actual token pair MUD/USDT of polygon mainnet
+                tickLower: -69060,//The actual token pair MUD/USDT of polygon mainnet
+                tickUpper: 57060,//The actual token pair MUD/USDT of polygon mainnet
                 amount0Desired: amount0ToMint,
                 amount1Desired: amount1ToMint,
                 amount0Min: SafeMath.mul(amount0ToMint, slippageFactor) / 1000, // slippage protection
