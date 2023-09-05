@@ -78,8 +78,8 @@ library SafeMath {
 /// @title Uniswap V3 canonical staking interface
 contract MUDUniswapV3Staker is IERC721Receiver {
 
-    uint constant secPerMonth = 2592000;
-    uint constant secPerDay = 86400;
+    uint constant secPerMonth = 60;//2592000;
+    uint constant secPerDay = 60;//86400;
     //This is the DAO fund address that will be appointed by DAO, the fund from the penalties will be used as R&D fund or 
     //bounty rewards which will be voted by the community members
     address constant  daoFundAddress = address(0x2cD63d1C39373d1Af4F68e57991924F5DAC1a8B6);
@@ -187,8 +187,8 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         uint256 amount1ToMint = mudToStake;
 
         // transfer tokens to contract
-        require(usdt.transferFrom(msg.sender, address(this), amount0ToMint) == true, "USDT transferFrom() failed!");
-        require(mud.transferFrom(msg.sender, address(this), amount1ToMint) == true, "MUD transferFrom() failed!");
+        require(usdt.transferFrom(msg.sender, address(this), amount0ToMint), "USDT transferFrom() failed!");
+        require(mud.transferFrom(msg.sender, address(this), amount1ToMint), "MUD transferFrom() failed!");
 
         // Approve the position manager
         usdt.approve(address(nonfungiblePositionManager), amount0ToMint);
@@ -234,13 +234,13 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         if (amount0 < amount0ToMint) {
             usdt.approve(address(nonfungiblePositionManager), 0);
             uint256 refund0 = amount0ToMint - amount0;
-            require(usdt.transfer(msg.sender, refund0) == true, "USDT transfer failed !");
+            require(usdt.transfer(msg.sender, refund0), "USDT transfer failed !");
         }
 
         if (amount1 < amount1ToMint) {
             mud.approve(address(nonfungiblePositionManager), 0);
             uint256 refund1 = amount1ToMint - amount1;
-            require(mud.transfer(msg.sender, refund1) == true, "MUD transfer failed !");
+            require(mud.transfer(msg.sender, refund1), "MUD transfer failed !");
         }
         
         uint nodeIdOut = nodeId;//to pass the compiling , otherwise compiler will have stack too deep error.
@@ -325,7 +325,7 @@ contract MUDUniswapV3Staker is IERC721Receiver {
                     (amount0, amount1) = nonfungiblePositionManager.decreaseLiquidity(params);   
                     (uint256 amount0collected, uint256 amount1collected) = collectAllFees(tokenId);
                  
-                    require(usdt.transfer(daoFundAddress, amount0collected) == true, "USDT transfer failed !");//transfer the 20% usdt to DAO fund account
+                    require(usdt.transfer(daoFundAddress, amount0collected), "USDT transfer failed !");//transfer the 20% usdt to DAO fund account
                     mud.burn(amount1collected); //burn 20% MUD as penalty                  
 
                     emit mudLPPrematureUnstaked(msg.sender, tokenId, amount0collected, amount1collected);
@@ -379,8 +379,8 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         (amount0collected, amount1collected) = collectAllFees(tokenId);
 
         //return tokens to the owner
-        require(usdt.transfer(ownerAddress, amount0collected) == true, "USDT transfer failed !");
-        require(mud.transfer(ownerAddress, amount1collected) == true, "MUD transfer failed !");
+        require(usdt.transfer(ownerAddress, amount0collected), "USDT transfer failed !");
+        require(mud.transfer(ownerAddress, amount1collected), "MUD transfer failed !");
     }
 
     //unstake the last staking tokenId of the address for mainnet mapping purpose, ignore the contract expiry time
@@ -504,7 +504,7 @@ contract MUDUniswapV3Staker is IERC721Receiver {
         return this.onERC721Received.selector;
     } 
 
-    ///This function calculate the amount of tokens according from the liqudity amount
+    ///This function calculate the amount of tokens according to the liqudity amount
     function calculateLiquidityAmount(IUniswapV3Pool pool, int24 lowerTick, int24 upperTick, uint128 liqudityToRelease) private view returns (uint256 amount0, uint256 amount1) {
         (uint160 sqrtRatioX96, , , , , , ) = pool.slot0();
         (amount0, amount1) = LiquidityAmounts
@@ -522,7 +522,7 @@ contract MUDUniswapV3Staker is IERC721Receiver {
     //   addressToCheck: owner address of the NFT
     // Returns:
     //   amount0: USDT amount of the liquidity
-    //   amount1: MUD amount of the liquidity 
+    //   amount1: MUD amount of the liquidity
     function getLiquidityAmountByTokenId(uint256 tokenId, address addressToCheck) external view returns (uint256 amount0, uint256 amount1) {       
         if (msg.sender == admin) {
             require(tokenOwner[tokenId] == addressToCheck, "The staked nft does not belong to the addressToCheck !");            
